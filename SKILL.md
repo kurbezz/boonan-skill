@@ -63,7 +63,7 @@ node cli.js new systems ai.json                   # empty {nodes:[],links:[]}
 node cli.js mv systems ai.json enemy_ai.json
 node cli.js rm systems enemy_ai.json
 # assets, maps, UI
-node cli.js upload img/Tilesets ./grass.png --register  # raw bytes + assets/images.json node
+node cli.js upload img/Tilesets ./grass.png --register  # default binary (latin1) encoding + assets/images.json node
 node cli.js map new level_1 --register                  # also: tile, fill, object, show, get/put
 node cli.js ui add-layer hud.json --json '{"name":"score"}'  # also: layers, set, rm-layer, put
 # ship
@@ -76,9 +76,15 @@ Output is always JSON; failures return `{"ok":false,...}` with exit code 1.
 `node cli.js help` lists every subcommand and the batch format.
 `upload --dry-run`, `map validate --local`, and `ui validate --local` work
 without a cookie.
+`upload` defaults to `--encoding binary` (a latin1 byte string), which was
+verified in a live sandbox. `--encoding buffer` remains a diagnostic option,
+but the live-tested server timed out and did not upload an 87-byte PNG when it
+was sent as a socket.io Buffer. See [assets.md](reference/assets.md).
 
 The client sends `baseVersion` on every write (retries on conflict),
 validates the graph before sending, skips no-op writes, and paces writes.
+RPCs on one `Boonan` connection are serialized because replies have no
+request IDs; after a timeout reconnect before making another request.
 For scripted edits, `require('./scripts/client')` exposes `Boonan`
 (`readGraph`, `edit`, `setNodeFields`, `build`) and pure helpers
 (`addNode`, `addLink`, `removeNode`, `removeLink`, `validateGraph`).

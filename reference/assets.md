@@ -20,14 +20,20 @@ node cli.js upload ui/img ./button.png                    # UI textures need no 
   reports with the local size. If they differ, it fails with
   `upload_corrupted` and suggests the other `--encoding`.
 
+Matching sizes do not prove byte-for-byte integrity; open the asset in the
+built game to complete visual/audio verification.
+
 ## Encoding
 
-`--encoding buffer` (the default) sends a socket.io binary attachment, which
-is the same bytes the editor gets from `FileReader.readAsArrayBuffer`.
-`--encoding binary` sends a latin1 byte string, the same as the editor's
-`atob()` texture path. Which one the server stores correctly is **not yet
-confirmed live**. If you get `upload_corrupted`, retry with the other
-encoding and note which one worked.
+`--encoding binary` (the default) sends a latin1 byte string, the same as the
+editor's `atob()` texture path. It was verified in a live sandbox upload: an
+87-byte PNG received `uploaded-file-project` and was stored as 87 bytes.
+
+`--encoding buffer` sends a socket.io binary attachment and remains available
+for diagnosis. On that live-tested server, the same PNG sent as a Buffer timed
+out after 60 seconds and no file was uploaded, so do not use `buffer` unless
+you are specifically investigating server behavior. If verification reports
+`upload_corrupted`, retry with the other encoding.
 
 ## Registration
 

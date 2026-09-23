@@ -50,7 +50,7 @@
  *   boonan map get <file> [--out path]
  *   boonan map register <file>
  *
- *   boonan upload <folder> <local file> [--as NAME] [--register] [--encoding buffer|binary] [--dry-run]
+ *   boonan upload <folder> <local file> [--as NAME] [--register] [--encoding binary|buffer] [--dry-run]
  */
 const fs = require('fs');
 const path = require('path');
@@ -119,8 +119,8 @@ async function main() {
         'boonan build [title]                        — build the project',
         'boonan url                                  — game link',
         '',
-        'boonan upload <folder> <local file> [--as NAME] [--register] [--encoding buffer|binary] [--dry-run]',
-        '                                            — upload a binary (img/, audio/, ui/img); --register adds the assets/*.json node',
+        'boonan upload <folder> <local file> [--as NAME] [--register] [--encoding binary|buffer] [--dry-run]',
+        '                                            — upload a binary (img/, audio/, ui/img); default encoding is binary; --register adds the assets/*.json node',
         '',
         'boonan ui new <file> [--width N] [--height N]      — create an empty UI scene in ui/',
         'boonan ui validate <file|local.json> [--local]     — validate a remote ui/<file> or, with --local, a local path',
@@ -891,9 +891,9 @@ async function registerMap(b, base) {
 
 async function uploadMain(rest, flags) {
   const [rawFolder, localPath] = rest;
-  if (!localPath) die('usage: upload <folder> <local file> [--as NAME] [--register] [--encoding buffer|binary]', 'bad_args');
+  if (!localPath) die('usage: upload <folder> <local file> [--as NAME] [--register] [--encoding binary|buffer]', 'bad_args');
   const folder = rawFolder.replace(/^\/+|\/+$/g, '');
-  const encoding = flags.encoding || 'buffer';
+  const encoding = flags.encoding || 'binary';
   if (encoding !== 'buffer' && encoding !== 'binary') die('--encoding must be buffer or binary', 'bad_args');
   let buf;
   try { buf = fs.readFileSync(localPath); }
@@ -904,7 +904,7 @@ async function uploadMain(rest, flags) {
   const problems = uploadLib.checkUpload({ folder, fileName, buf });
   if (problems.length) die('upload failed validation', 'invalid_upload', { problems });
   if (flags['dry-run']) {
-    out({ ok: true, dryRun: true, folder, fileName, bytes: buf.length, type: uploadLib.sniffType(buf), registration: reg });
+    out({ ok: true, dryRun: true, folder, fileName, bytes: buf.length, type: uploadLib.sniffType(buf), encoding, registration: reg });
     return;
   }
 

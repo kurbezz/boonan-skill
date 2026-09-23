@@ -67,7 +67,13 @@ scripts/client.js           Boonan class + graph helpers (reusable from Node)
 scripts/upload.js           magic-byte checks, upload, size verification, registration
 scripts/map.js              map model: tilesets, cells, objects, validation
 scripts/ui-scene.js         UI scene model: layer defaults, validation
+scripts/tests/              offline regression tests (`node --test scripts/tests/*.test.js`)
 ```
+
+The default upload encoding (`binary`) was verified on a sandbox project;
+socket.io `Buffer` uploads timed out without storing the file. A successful
+upload verifies the stored size, not byte-for-byte integrity. Inspect assets
+in the built game before relying on them.
 
 ## License
 

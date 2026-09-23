@@ -46,6 +46,9 @@ class Boonan {
     this._versions = new Map();
     this._lastWrite = 0;
     this._log = [];
+    // The protocol has no request IDs: replies are identified only by event
+    // name, so two concurrent RPCs could otherwise consume each other's reply.
+    this._rpcQueue = Promise.resolve();
   }
 
   get versions() { return Object.fromEntries(this._versions); }
@@ -101,25 +104,53 @@ class Boonan {
 
   /** Send an event and wait for one of two responses. */
   _rpc(outEv, payload, okEv, errEv, timeout) {
+    const run = () => this._rpcOnce(outEv, payload, okEv, errEv, timeout);
+    // Use both branches so a rejected RPC never poisons later requests.
+    const result = this._rpcQueue.then(run, run);
+    this._rpcQueue = result.then(() => {}, () => {});
+    return result;
+  }
+
+  _rpcOnce(outEv, payload, okEv, errEv, timeout) {
+    // This must run inside the queue: a connection can disappear while a
+    // request is waiting for its turn.
     this._assertLive();
+    const socket = this.socket;
     return new Promise((resolve, reject) => {
       const ms = timeout || this.timeout;
       const t = setTimeout(() => {
         cleanup();
         reject(new BoonanError(`timeout for ${outEv} (${ms} ms)`, 'timeout'));
+        // A delayed reply has no request ID and could be mistaken for the
+        // following RPC's reply. Discard this connection rather than reuse it.
+        if (this.socket === socket) {
+          socket.close();
+          this.socket = null;
+        }
       }, ms);
       const onOk = (d) => { cleanup(); resolve(d); };
       const onErr = (e) => { cleanup(); reject(new BoonanError(errText(e), 'server_error', e)); };
+      const onDisconnect = (reason) => {
+        cleanup();
+        reject(new BoonanError(`disconnected${reason ? `: ${reason}` : ''}`, 'disconnected'));
+      };
       const cleanup = () => {
         clearTimeout(t);
-        this.socket.off(okEv, onOk);
-        if (errEv) this.socket.off(errEv, onErr);
+        socket.off(okEv, onOk);
+        if (errEv) socket.off(errEv, onErr);
+        socket.off('disconnect', onDisconnect);
       };
-      this.socket.on(okEv, onOk);
-      if (errEv) this.socket.on(errEv, onErr);
+      socket.on(okEv, onOk);
+      if (errEv) socket.on(errEv, onErr);
+      socket.on('disconnect', onDisconnect);
       this._log.push({ dir: 'out', ev: outEv, t: Date.now() });
-      if (payload === undefined) this.socket.emit(outEv);
-      else this.socket.emit(outEv, payload);
+      try {
+        if (payload === undefined) socket.emit(outEv);
+        else socket.emit(outEv, payload);
+      } catch (e) {
+        cleanup();
+        reject(e);
+      }
     });
   }
 

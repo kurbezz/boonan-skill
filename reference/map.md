@@ -24,10 +24,10 @@ and write it.
 
 | part | notes |
 |---|---|
-| root | `cols` x `rows` cells of `tileSize` px each. Missing arrays default to `[]` |
+| root | `cols` x `rows` cells of `tileSize` px each. `layers` is present in editor maps; `objects` and `tilesets` may be omitted and default to `[]` |
 | tileset | `relativePath` is the image path under the project. The grid is `gridW = imageW / cellSize` and `gridH = imageH / cellSize`. Unknown fields (e.g. `autotiles`) are preserved |
 | layer `type` | `tiles` (painted cells), `objects`, or `entities`. The `entities` layer marks where entity sprites are drawn: layers above it are drawn over entities (`Map_Draw_Map_Above__action`), layers below it under them |
-| cell | a pair `["<col>,<row>", {tilesetId, tileId}]`. There is at most one pair per key in each layer |
+| cell | a pair `["<col>,<row>", {tilesetId, tileId}]`. There is at most one pair per key in each layer. Existing editor maps can explicitly store an empty cell as `["<col>,<row>", {"tilesetId":null,"tileId":"0"}]`; the validator accepts and preserves this exact placeholder. |
 | `tileId` | `<tilesetId>_t_<index>` where `index = row * gridW + col` inside the tileset image, 0-based. The CLI accepts a bare index (`7`) and stores the full form |
 | object | `name` is how the game finds it (`Core_Map_getEntity__getter`, only inside `Map_On_Map_Loaded__event`). `x`, `y`, `w`, `h` are in px. Optional: `sprite {tilesetId, tileId}`, `collider`, `defId` (preset in `objects/<defId>.json`), `components {<name>: {<field>: value}}` |
 

@@ -1,11 +1,13 @@
 'use strict';
 /**
  * boonan.io — MAP helpers (maps/<name>.json files).
- * Root shape: {version, cols, rows, tileSize, layers[], objects[], tilesets[]}.
+ * Root shape: {version, cols, rows, tileSize, layers[], objects?[], tilesets?[]}.
  * Layer:      {id, name, type: tiles|objects|entities, visible, cells}
  * Cell:       cells is an ARRAY of [key, value] pairs, key = "x,y" (cell coords),
  *             value = {tilesetId, tileId}, tileId = "<tilesetId>_t_<index>",
  *             index = row * gridW + col within the tileset image (0-based).
+ *             Existing editor maps also use {tilesetId:null, tileId:"0"} as an
+ *             empty-cell placeholder; preserve and accept that exact form.
  * Tileset:    {id, relativePath, cellSize, imageW, imageH, ...}. gridW/gridH are
  *             derived: floor(imageW/cellSize) x floor(imageH/cellSize).
  * Object:     open JSON, looked up by `name` at runtime — treat unknown fields as
@@ -93,8 +95,16 @@ function validateMap(map, where) {
       const x = parseInt(xs, 10), y = parseInt(ys, 10);
       if (typeof map.cols === 'number' && (x < 0 || x >= map.cols)) problems.push(`${tag}: cells[${ci}]: x=${x} out of range 0..${map.cols - 1}`);
       if (typeof map.rows === 'number' && (y < 0 || y >= map.rows)) problems.push(`${tag}: cells[${ci}]: y=${y} out of range 0..${map.rows - 1}`);
-      if (!value || typeof value !== 'object' || typeof value.tilesetId !== 'string' || typeof value.tileId !== 'string') {
-        problems.push(`${tag}: cells[${ci}]: value must be {tilesetId, tileId} strings`);
+      if (!value || typeof value !== 'object') {
+        problems.push(`${tag}: cells[${ci}]: value must be {tilesetId, tileId}`);
+        return;
+      }
+      // Confirmed from an editor-created maps/level_1.json: every unpainted
+      // cell is explicitly represented as {tilesetId:null, tileId:"0"}.
+      // Do not accept arbitrary null tile IDs or other null-tile placeholders.
+      if (value.tilesetId === null && value.tileId === '0') return;
+      if (typeof value.tilesetId !== 'string' || typeof value.tileId !== 'string') {
+        problems.push(`${tag}: value must be {tilesetId, tileId} strings, or the empty placeholder {tilesetId:null, tileId:"0"}`);
         return;
       }
       const ts = tsById[value.tilesetId];

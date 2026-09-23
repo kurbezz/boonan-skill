@@ -124,10 +124,12 @@ function checkUpload({ folder, fileName, buf }) {
 /**
  * Encode a buffer for the `fileData` field of `upload-file-project`.
  * @param {Buffer} buf
- * @param {'buffer'|'binary'} [encoding='buffer']
+ * `binary` is the default because it is the encoding verified against the
+ * live server. `buffer` remains available for diagnosis.
+ * @param {'buffer'|'binary'} [encoding='binary']
  * @returns {Buffer|string}
  */
-function encodeFileData(buf, encoding) {
+function encodeFileData(buf, encoding = 'binary') {
   if (encoding === 'binary') return buf.toString('latin1');
   return buf;
 }
@@ -140,11 +142,11 @@ function encodeFileData(buf, encoding) {
  * @param {string} opts.folder
  * @param {string} opts.fileName
  * @param {Buffer} opts.buf
- * @param {'buffer'|'binary'} [opts.encoding='buffer']
+ * @param {'buffer'|'binary'} [opts.encoding='binary']
  * @param {boolean} [opts.verify=true]
  */
 async function upload(b, opts) {
-  const { folder, fileName, buf, encoding = 'buffer', verify = true } = opts;
+  const { folder, fileName, buf, encoding = 'binary', verify = true } = opts;
 
   const problems = checkUpload({ folder, fileName, buf });
   if (problems.length) {

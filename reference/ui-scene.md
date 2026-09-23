@@ -51,3 +51,7 @@ node cli.js ui rm-layer hud.json panel --recursive
 node cli.js ui validate ./hud.local.json --local
 node cli.js ui put hud.json ./hud.local.json      # validate, then write with baseVersion
 ```
+
+`ui set` parses numeric-looking arguments as numbers. To match an existing
+text value such as the string `"0"`, pass `--expect '"0"'` (JSON-quoted inside
+the shell argument), not `--expect 0`.
