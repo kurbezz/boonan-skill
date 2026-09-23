@@ -205,6 +205,38 @@ class Boonan {
     throw last;
   }
 
+  /**
+   * Read → mutate → write a JSON document that is NOT a {nodes,links} graph
+   * (e.g. a ui-scene). Same read-modify-write-with-conflict-retry semantics as
+   * edit(), but validation is pluggable via opts.validate(doc, where) -> problems[].
+   * mutate(doc) mutates the object in place or returns a new one.
+   */
+  async editJson(folder, name, mutate, opts = {}) {
+    const retries = opts.retries === undefined ? 3 : opts.retries;
+    let last;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const f = await this.readFile(folder, name);
+      let doc;
+      try { doc = JSON.parse(f.content); }
+      catch (e) { throw new BoonanError(`${folder}/${name}: not JSON — ${e.message}`, 'bad_json'); }
+      const next = mutate(doc) || doc;
+      if (opts.validate) {
+        const problems = opts.validate(next, `${folder}/${name}`);
+        if (problems.length) throw new BoonanError('validation failed:\n  ' + problems.join('\n  '), 'invalid_json', problems);
+      }
+      try {
+        const r = await this.writeFile(folder, name, JSON.stringify(next, null, 2), { baseVersion: f.version });
+        return { ...r, attempts: attempt + 1, doc: next };
+      } catch (e) {
+        last = e;
+        const conflict = /изменил|baseVersion|версия|слить|modified|changed|version|conflict|merge/i.test(e.message);
+        if (!conflict || attempt === retries) throw e;
+        await new Promise(r => setTimeout(r, 250 + attempt * 400));
+      }
+    }
+    throw last;
+  }
+
   /** Point-update node fields: [{nodeId, key, value}]. key looks like 'fieldValues.width' or 'x'. */
   async setNodeFields(folder, name, edits, opts = {}) {
     const applied = [], missing = [], unchanged = [];

@@ -41,6 +41,9 @@ node scripts/cli.js nodes systems move.json --value 40
 node scripts/cli.js set systems move.json n_xxx fieldValues.value 100 --expect 40
 node scripts/cli.js add-node systems move.json For_Each_Entity__action --fields '{"query":"player"}'
 node scripts/cli.js link systems move.json n_a exec n_b exec
+node scripts/cli.js upload img/Tilesets ./grass.png --register
+node scripts/cli.js map new level_1 --register
+node scripts/cli.js ui add-layer hud.json --json '{"name":"score"}'
 node scripts/cli.js build "My Game"
 ```
 
@@ -54,10 +57,16 @@ SKILL.md                    agent instructions (loaded by the runtime)
 reference/nodes.md          all 199 node schemas: params, ports, behaviour
 reference/graph-format.md   node/link JSON shape, scopes, component files
 reference/recipes.md        ECS model + step-by-step node chains
+reference/assets.md         binary upload + asset registration
+reference/map.md            tile map JSON + map commands
+reference/ui-scene.md       UI scene JSON + ui commands
 reference/protocol.md       socket.io events, headers, versioning
 reference/verifying.md      screenshot-based verification
 scripts/cli.js              command-line entry point
 scripts/client.js           Boonan class + graph helpers (reusable from Node)
+scripts/upload.js           magic-byte checks, upload, size verification, registration
+scripts/map.js              map model: tilesets, cells, objects, validation
+scripts/ui-scene.js         UI scene model: layer defaults, validation
 ```
 
 ## License
