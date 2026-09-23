@@ -1,6 +1,6 @@
 ---
 name: boonan
-description: Edit and build games on the boonan.io node-graph platform through a bundled headless socket.io CLI. Use when working on a boonan.io project - inspecting or patching node graphs (nodes/links JSON), changing gameplay values, building the game, or debugging the editor's file API.
+description: Build and edit games on the boonan.io node-graph platform (ruDimbo engine) through a bundled headless socket.io CLI. Use when working on a boonan.io project - creating or patching node graphs (nodes/links JSON), adding systems and components, changing gameplay values, registering assets, building the game, or debugging the editor's file API.
 ---
 
 # boonan.io
@@ -26,46 +26,66 @@ it; on `session is invalid`, ask for a fresh one.
 
 ## Workflow
 
-1. **Locate** - `nodes` to find candidates, `trace` to see inputs and
-   downstream nodes. The graph is the source of truth; do not edit from notes.
-2. **Edit** - `set` / `batch` with `--expect <current value>`. A mismatch
-   aborts the write.
+1. **Locate** - `ls`, then `nodes` to find candidates and `trace` to see
+   inputs and downstream nodes. The graph is the source of truth; do not
+   edit from notes.
+2. **Edit** - value tweaks: `set` / `batch` with `--expect <current value>`.
+   Structure: `add-node`, `link`, `rm-node`, or `put` a whole graph.
+   Look up every `schemaId` in [reference/nodes.md](reference/nodes.md);
+   never guess one.
 3. **Build** - `build "<Title>"`.
 4. **Verify visually** - open the URL from `url` and take a screenshot. A
    successful build does not prove the game works. See
    [reference/verifying.md](reference/verifying.md).
 
+New feature or new game: read [reference/recipes.md](reference/recipes.md)
+first for the ECS model and step-by-step node chains.
+
 ## Commands
 
 ```sh
+# inspect
 node cli.js ls                                    # files, sizes, protected flags
 node cli.js cat systems move.json                 # raw content + version
 node cli.js nodes systems move.json --value 40    # filter nodes (--grep, --schema, --value)
 node cli.js trace systems move.json n_xxx         # inputs + downstream chain
+# edit values
 node cli.js set systems move.json n_xxx fieldValues.value 100 --expect 40
-node cli.js batch edits.json                      # [{folder,file,nodeId,key,value,expect}]
+node cli.js batch edits.json                      # ops: set | add-node | link | unlink | rm-node
+# edit structure
+node cli.js add-node systems move.json For_Each_Entity__action --fields '{"query":"player"}'
+node cli.js link systems move.json n_a exec n_b exec
+node cli.js unlink systems move.json n_a exec n_b exec
+node cli.js rm-node systems move.json n_xxx
+node cli.js put systems move.json ./local.json    # replace whole graph
+# files
+node cli.js new systems ai.json                   # empty {nodes:[],links:[]}
+node cli.js mv systems ai.json enemy_ai.json
+node cli.js rm systems enemy_ai.json
+# ship
 node cli.js build "Title"
 node cli.js url
 ```
 
 Use `.` as the folder for root files (`node cli.js nodes . game.json`).
 Output is always JSON; failures return `{"ok":false,...}` with exit code 1.
-Run `node cli.js help` for details.
+`node cli.js help` prints the batch format.
 
 The client sends `baseVersion` on every write (retries on conflict),
 validates the graph before sending, skips no-op writes, and paces writes.
-For scripted edits, `require('./scripts/client')` exposes the same
-`Boonan` class (`readGraph`, `edit`, `setNodeFields`, `build`).
+For scripted edits, `require('./scripts/client')` exposes `Boonan`
+(`readGraph`, `edit`, `setNodeFields`, `build`) and pure helpers
+(`addNode`, `addLink`, `removeNode`, `removeLink`, `validateGraph`).
 
 ## Project layout
 
 | path | contents |
 |---|---|
-| `game.json` | entry graph |
-| `systems/*.json` | one graph per concern (movement, rendering, camera) |
-| `components/` | custom components |
-| `assets/images.json`, `assets/audio.json` | asset registries; nodes only see assets listed here |
-| `img/`, `audio/`, `maps/`, `ui/`, `objects/` | raw files |
+| `game.json` | entry graph: `On_Start__event`, `On_Tick__event`, `Add_System__action` list |
+| `systems/*.json` | one graph per concern, root `On_System_Update__event` |
+| `components/*.json` | custom components (`Component__event` with `fieldValues.properties`) |
+| `assets/*.json` | `Register_*__action` nodes; a game node only sees assets registered here |
+| `img/`, `audio/`, `maps/`, `ui/`, `objects/` | raw files (upload binaries through the editor UI) |
 
 Limits: 5 projects, 15 MB per project, 5 MB per file.
 
@@ -74,14 +94,20 @@ Limits: 5 projects, 15 MB per project, 5 MB per file.
 | Mistake | Fix |
 |---|---|
 | Extra root keys in a graph | Root must be exactly `{nodes, links}` |
-| `schemaId` with dots (`core.onUpdate`) | Only `[A-Za-z0-9_]`, e.g. `On_System_Update__event` |
-| Treating `Less(getDistance, N)` as a radius | It compares center-to-center distance; N = sum of both radii |
-| Resizing a sprite and expecting collider/thresholds to follow | Sprite size, collider, and distance thresholds are independent - update all three |
-| `Get Variable` inside `systems/` | Systems have no own scope; store state in entity components |
+| Invented `schemaId` | Copy from nodes.md; format `Label_Words__action\|__getter\|__event` |
+| New system file does nothing | Add `Add_System__action`(file) to `game.json`; node order = execution order |
+| Entity invisible to systems | `Core_Query_add__action` (Register Entity) after Create Entity |
+| Getter on an empty query crashes the frame | Use `Query_First_Entity__action` → `found` branch, or `Is_Valid__getter` |
+| `Get_Variable__getter` inside `systems/` | Game scope only; store state in component fields |
+| Treating `Less(getDistance, N)` as a radius | Center-to-center distance; N = sum of both radii |
+| Resizing a sprite and expecting collider/thresholds to follow | Sprite, collider, thresholds are independent - update all three |
 | Writing a field another node already writes | Find writers first: `nodes --grep '"component":"<name>"'` |
-| Uploading PNG as a data URL via `upload-file-project` | Stored as text; the game renders the literal string. Upload binaries through the editor UI |
+| Uploading PNG as a data URL via `upload-file-project` | Stored as text; upload binaries through the editor UI |
 
 ## Reference
 
-- [reference/protocol.md](reference/protocol.md) - socket.io events, headers, versioning, browser-side globals. Read when extending `client.js` or debugging connection errors.
-- [reference/verifying.md](reference/verifying.md) - canvas layout and pixel-based checks for screenshot verification.
+- [reference/nodes.md](reference/nodes.md) - all 199 node schemas: id, kind, scopes, params, ports, behaviour notes. Grep by label or category.
+- [reference/graph-format.md](reference/graph-format.md) - node/link JSON shape, ports, scope per folder, component file format.
+- [reference/recipes.md](reference/recipes.md) - ECS mental model and step-by-step chains: draw, move, camera, map, collisions, sound, UI, timers.
+- [reference/protocol.md](reference/protocol.md) - socket.io events, headers, versioning, browser-side globals.
+- [reference/verifying.md](reference/verifying.md) - canvas layout and pixel checks for screenshot verification.

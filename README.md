@@ -39,6 +39,8 @@ export BOONAN_PROJECT='<project uuid>'
 node scripts/cli.js ls
 node scripts/cli.js nodes systems move.json --value 40
 node scripts/cli.js set systems move.json n_xxx fieldValues.value 100 --expect 40
+node scripts/cli.js add-node systems move.json For_Each_Entity__action --fields '{"query":"player"}'
+node scripts/cli.js link systems move.json n_a exec n_b exec
 node scripts/cli.js build "My Game"
 ```
 
@@ -48,11 +50,14 @@ See [SKILL.md](SKILL.md) for the workflow and
 ## Layout
 
 ```
-SKILL.md                 agent instructions (loaded by the runtime)
-reference/protocol.md    socket.io events, headers, versioning
-reference/verifying.md   screenshot-based verification
-scripts/cli.js           command-line entry point
-scripts/client.js        Boonan class (reusable from Node)
+SKILL.md                    agent instructions (loaded by the runtime)
+reference/nodes.md          all 199 node schemas: params, ports, behaviour
+reference/graph-format.md   node/link JSON shape, scopes, component files
+reference/recipes.md        ECS model + step-by-step node chains
+reference/protocol.md       socket.io events, headers, versioning
+reference/verifying.md      screenshot-based verification
+scripts/cli.js              command-line entry point
+scripts/client.js           Boonan class + graph helpers (reusable from Node)
 ```
 
 ## License

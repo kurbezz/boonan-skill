@@ -238,15 +238,96 @@ class Boonan {
     return { ok: true, written: d.written || [], count: (d.written || []).length };
   }
 
+  /** Create a new file. */
+  async createFile(folder, name, content) {
+    await this._pace();
+    const d = await this._rpc('create-file-project', { folderName: folder, fileName: name, fileData: content },
+      'created-file-project', 'file-create-error');
+    this._lastWrite = Date.now();
+    if (d && d.version !== undefined) this._versions.set(`${folder}|${name}`, d.version);
+    return { folder, name, created: true, version: d && d.version };
+  }
+
   async deleteFile(folder, name) {
-    this._assertLive();
-    this.socket.emit('delete-file-project', { folderName: folder, fileName: name });
-    await new Promise(r => setTimeout(r, 400));
-    return { folder, name, deleted: true };
+    await this._pace();
+    const d = await this._rpc('delete-file-project', { folderName: folder, fileName: name },
+      'deleted-file-project', 'file-delete-error');
+    this._lastWrite = Date.now();
+    this._versions.delete(`${folder}|${name}`);
+    return { folder, name, deleted: true, ...(d || {}) };
+  }
+
+  /** Rename a file. */
+  async renameFile(folder, oldName, newName) {
+    await this._pace();
+    const d = await this._rpc('rename-file-project', { folderName: folder, fileName: oldName, newFileName: newName },
+      'renamed-file-project', 'file-rename-error');
+    this._lastWrite = Date.now();
+    this._versions.delete(`${folder}|${oldName}`);
+    if (d && d.version !== undefined) this._versions.set(`${folder}|${newName}`, d.version);
+    return { folder, oldName, newName, renamed: true, version: d && d.version };
   }
 
   /** URL of the built game. */
   buildUrl() { return `${this.origin}/projects/${this.project}/build/index.html`; }
+}
+
+/** Add a node to a graph in place. Returns the created node. */
+function addNode(graph, opts = {}) {
+  const nodes = graph.nodes || (graph.nodes = []);
+  let id = opts.id;
+  if (id) {
+    if (nodes.some(n => n.id === id)) throw new BoonanError(`node already exists: ${id}`, 'duplicate_id');
+  } else {
+    do {
+      id = `n_${Date.now().toString(36)}_${nodes.length}`;
+    } while (nodes.some(n => n.id === id));
+  }
+  const node = {
+    id,
+    schemaId: opts.schemaId,
+    x: opts.x === undefined ? 0 : opts.x,
+    y: opts.y === undefined ? 0 : opts.y,
+    fieldValues: opts.fieldValues || {},
+  };
+  nodes.push(node);
+  return node;
+}
+
+/** Add a link between two existing nodes. Returns {duplicate:true} if it already exists, else the link. */
+function addLink(graph, opts = {}) {
+  const { fromNode, fromPort, toNode, toPort } = opts;
+  const nodes = graph.nodes || [];
+  const links = graph.links || (graph.links = []);
+  if (!nodes.some(n => n.id === fromNode)) throw new BoonanError(`node not found: ${fromNode}`, 'not_found');
+  if (!nodes.some(n => n.id === toNode)) throw new BoonanError(`node not found: ${toNode}`, 'not_found');
+  const exists = links.some(l => l.fromNode === fromNode && l.fromPort === fromPort && l.toNode === toNode && l.toPort === toPort);
+  if (exists) return { duplicate: true };
+  const id = `l_${Date.now().toString(36)}_${links.length}`;
+  const link = { id, fromNode, fromPort, toNode, toPort };
+  links.push(link);
+  return link;
+}
+
+/** Remove links matching the given endpoints. Returns the number removed. */
+function removeLink(graph, opts = {}) {
+  const { fromNode, fromPort, toNode, toPort } = opts;
+  const links = graph.links || [];
+  const before = links.length;
+  graph.links = links.filter(l => !(l.fromNode === fromNode && l.fromPort === fromPort && l.toNode === toNode && l.toPort === toPort));
+  return before - graph.links.length;
+}
+
+/** Remove a node and every link touching it. */
+function removeNode(graph, id) {
+  const nodes = graph.nodes || [];
+  const before = nodes.length;
+  graph.nodes = nodes.filter(n => n.id !== id);
+  const removed = graph.nodes.length !== before;
+  const links = graph.links || [];
+  const beforeLinks = links.length;
+  graph.links = links.filter(l => l.fromNode !== id && l.toNode !== id);
+  return { removed, linksRemoved: beforeLinks - graph.links.length };
 }
 
 /** Validate a graph before sending: catches what the server would complain about. */
@@ -279,4 +360,4 @@ function validateGraph(graph, where = 'graph') {
   return problems;
 }
 
-module.exports = { Boonan, BoonanError, validateGraph };
+module.exports = { Boonan, BoonanError, validateGraph, addNode, addLink, removeLink, removeNode };
