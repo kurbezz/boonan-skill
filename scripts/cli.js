@@ -49,6 +49,7 @@
  *   boonan map put <file> <local.json>
  *   boonan map get <file> [--out path]
  *   boonan map register <file>
+ *   boonan map preset <new|get|validate|put> ...
  *
  *   boonan upload <folder> <local file> [--as NAME] [--register] [--encoding binary|buffer] [--dry-run]
  */
@@ -147,6 +148,10 @@ async function main() {
         'boonan map put <file> <local.json>                 — replace a whole map',
         'boonan map get <file> [--out path]                 — write a local copy for bulk edits',
         'boonan map register <file>                         — ensure the map is registered via Register_Level_maps__action',
+        'boonan map preset new <name> [--w N --h N]         — create an objects/<name>.json collider preset only',
+        'boonan map preset get <name> [--out path]          — write a local preset copy',
+        'boonan map preset validate <name|local.json> [--local] — validate a remote or local preset',
+        'boonan map preset put <name> <local.json>          — replace an existing preset with optimistic validation',
       ],
       env: ['BOONAN_COOKIE', 'BOONAN_PROJECT'],
       batchFormat: [
@@ -165,6 +170,9 @@ async function main() {
   if ((cmd === 'ui' || cmd === 'map') && rest[0] === 'validate' && flags.local) {
     const sub = rest.shift();
     return cmd === 'ui' ? uiMain(sub, rest, flags) : mapMain(sub, rest, flags);
+  }
+  if (cmd === 'map' && rest[0] === 'preset' && rest[1] === 'validate' && flags.local) {
+    return mapMain(rest.shift(), rest, flags);
   }
 
   const cookie = process.env.BOONAN_COOKIE;
@@ -589,16 +597,18 @@ function normMapFile(name) {
 }
 
 async function mapMain(sub, rest, flags) {
-  if (!sub) die('usage: map <new|info|validate|show|add-tileset|tile|erase|fill|resize|add-layer|rm-layer|objects|object|rm-object|put|get|register> ...', 'bad_args');
+  if (!sub) die('usage: map <new|info|validate|show|add-tileset|tile|erase|fill|resize|add-layer|rm-layer|objects|object|rm-object|put|get|register|preset> ...', 'bad_args');
 
   // Local, no-network operations.
-  if (sub === 'validate' && flags.local) {
+  if ((sub === 'validate' || sub === 'preset') && flags.local) {
+    const isPreset = sub === 'preset';
+    if (isPreset && rest.shift() !== 'validate') die('usage: map preset validate <local.json> --local', 'bad_args');
     const [localPath] = rest;
-    if (!localPath) die('usage: map validate <local.json> --local', 'bad_args');
-    let map;
-    try { map = JSON.parse(fs.readFileSync(localPath, 'utf8')); }
+    if (!localPath) die(isPreset ? 'usage: map preset validate <local.json> --local' : 'usage: map validate <local.json> --local', 'bad_args');
+    let doc;
+    try { doc = JSON.parse(fs.readFileSync(localPath, 'utf8')); }
     catch (e) { die(`could not read ${localPath}: ${e.message}`, 'bad_file'); }
-    const problems = mapLib.validateMap(map, localPath);
+    const problems = isPreset ? mapLib.validatePreset(doc, localPath) : mapLib.validateMap(doc, localPath);
     out({ ok: problems.length === 0, file: localPath, problems });
     if (problems.length) process.exitCode = 1;
     return;
@@ -623,6 +633,8 @@ async function mapMain(sub, rest, flags) {
         if (flags.rows !== undefined) opts.rows = Number(flags.rows);
         if (flags.tile !== undefined) opts.tileSize = Number(flags.tile);
         const map = mapLib.makeMap(opts);
+        // Avoid creating a map if --register cannot use an existing registry.
+        if (flags.register) await findMapRegistry(b);
         const r = await b.createFile('maps', file, JSON.stringify(map, null, 2));
         let registered;
         if (flags.register) registered = await registerMap(b, base);
@@ -777,7 +789,7 @@ async function mapMain(sub, rest, flags) {
         try { map = JSON.parse(f.content); }
         catch (e) { die(`maps/${file}: not JSON — ${e.message}`, 'bad_json'); }
         const objects = (map.objects || []).map(o => ({
-          name: o.name, x: o.x, y: o.y, w: o.w, h: o.h, defId: o.defId, sprite: o.sprite, components: o.components,
+          name: o.name, x: o.x, y: o.y, w: o.w, h: o.h, layerId: o.layerId, defId: o.defId, sprite: o.sprite, collider: o.collider, components: o.components,
         }));
         out({ ok: true, file, version: f.version, total: objects.length, objects });
         break;
@@ -849,6 +861,51 @@ async function mapMain(sub, rest, flags) {
         out({ ok: true, ...result });
         break;
       }
+      case 'preset': {
+        const [presetSub, name, localPath] = rest;
+        if (!presetSub) die('usage: map preset <new|get|validate|put> ...', 'bad_args');
+        if (presetSub === 'new') {
+          if (!name) die('usage: map preset new <name> [--w N --h N]', 'bad_args');
+          const { file, base } = normMapFile(name);
+          const preset = mapLib.makePreset(base, { w: flags.w === undefined ? 32 : Number(flags.w), h: flags.h === undefined ? 32 : Number(flags.h) });
+          const problems = mapLib.validatePreset(preset, `objects/${file}`);
+          if (problems.length) die('preset failed validation', 'invalid_preset', { problems });
+          const r = await b.createFile('objects', file, JSON.stringify(preset, null, 2));
+          out({ ok: true, file, version: r.version, preset });
+        } else if (presetSub === 'get') {
+          if (!name) die('usage: map preset get <name> [--out path]', 'bad_args');
+          const { file, base } = normMapFile(name);
+          const f = await b.readFile('objects', file);
+          const outPath = flags.out || `${base}.json`;
+          fs.writeFileSync(outPath, f.content);
+          out({ ok: true, file, version: f.version, written: path.resolve(outPath) });
+        } else if (presetSub === 'validate') {
+          if (!name) die('usage: map preset validate <name>', 'bad_args');
+          const { file } = normMapFile(name);
+          const f = await b.readFile('objects', file);
+          let preset;
+          try { preset = JSON.parse(f.content); }
+          catch (e) { die(`objects/${file}: not JSON — ${e.message}`, 'bad_json'); }
+          const problems = mapLib.validatePreset(preset, `objects/${file}`);
+          out({ ok: problems.length === 0, file, version: f.version, problems });
+          if (problems.length) process.exitCode = 1;
+        } else if (presetSub === 'put') {
+          if (!localPath) die('usage: map preset put <name> <local.json>', 'bad_args');
+          const { file } = normMapFile(name);
+          let preset;
+          try { preset = JSON.parse(fs.readFileSync(localPath, 'utf8')); }
+          catch (e) { die(`could not read ${localPath}: ${e.message}`, 'bad_file'); }
+          const problems = mapLib.validatePreset(preset, localPath);
+          if (problems.length) { out({ ok: false, stage: 'validate', problems }); process.exitCode = 1; break; }
+          try { await b.readFile('objects', file); }
+          catch (_) { throw new BoonanError(`objects/${file} does not exist; create it with map preset new ${name} before using put`, 'not_found'); }
+          const r = await b.editJson('objects', file, () => preset, { validate: mapLib.validatePreset });
+          out({ ok: true, file, version: r.version });
+        } else {
+          die(`unknown map preset command: ${presetSub}`, 'bad_command');
+        }
+        break;
+      }
       default:
         die(`unknown map command: ${sub}`, 'bad_command');
     }
@@ -861,32 +918,49 @@ const MAP_REGISTER_SCHEMA = 'Register_Level_maps__action';
 
 /** Ensure a Register_Level_maps__action node exists for `base` (file name without .json). */
 async function registerMap(b, base) {
-  const files = await b.listFiles();
-  const assetFiles = files.filter(f => f.path.startsWith('assets/') && f.path.endsWith('.json')).map(f => f.path.slice('assets/'.length));
-
-  for (const af of assetFiles) {
-    const { graph } = await b.readGraph('assets', af);
+  const registry = await findMapRegistry(b);
+  for (const { file, graph } of registry.assets) {
     const found = (graph.nodes || []).find(n => n.schemaId === MAP_REGISTER_SCHEMA &&
       n.fieldValues && n.fieldValues.name === base);
-    if (found) return { registered: false, reason: 'exists', file: af, nodeId: found.id };
-  }
-
-  let targetFile = null;
-  for (const af of assetFiles) {
-    const { graph } = await b.readGraph('assets', af);
-    if ((graph.nodes || []).some(n => n.schemaId === MAP_REGISTER_SCHEMA)) { targetFile = af; break; }
-  }
-  if (!targetFile) targetFile = 'levels.json';
-
-  if (!assetFiles.includes(targetFile)) {
-    await b.createFile('assets', targetFile, '{"nodes":[],"links":[]}');
+    if (found) return { registered: false, reason: 'exists', file, nodeId: found.id };
   }
 
   let createdNode;
-  const r = await b.edit('assets', targetFile, (graph) => {
+  let existed = false;
+  const r = await b.edit('assets', registry.targetFile, (graph) => {
+    const found = (graph.nodes || []).find(n => n.schemaId === MAP_REGISTER_SCHEMA &&
+      n.fieldValues && n.fieldValues.name === base);
+    if (found) {
+      createdNode = found;
+      existed = true;
+      return;
+    }
     createdNode = addNode(graph, { schemaId: MAP_REGISTER_SCHEMA, fieldValues: { name: base, ext: 'json' } });
   });
-  return { registered: true, file: targetFile, nodeId: createdNode.id, version: r.version };
+  return { registered: !existed, ...(existed ? { reason: 'exists' } : {}), file: registry.targetFile, nodeId: createdNode.id, version: r.version };
+}
+
+/** Locate an existing asset graph suitable for level registrations. */
+async function findMapRegistry(b) {
+  const files = await b.listFiles();
+  const assetFiles = files
+    .filter(f => /^assets\/[^/]+\.json$/.test(f.path))
+    .map(f => f.path.slice('assets/'.length));
+  if (!assetFiles.length) {
+    throw new BoonanError(
+      'no assets/*.json registry exists; create an asset registry explicitly in the editor, then retry map register',
+      'assets_registry_missing',
+    );
+  }
+  const assets = await Promise.all(assetFiles.map(async (file) => ({
+    file,
+    ...(await b.readGraph('assets', file)),
+  })));
+  return {
+    assets,
+    // Do not create levels.json: it may be a protected standard project file.
+    targetFile: assets.some(({ file }) => file === 'levels.json') ? 'levels.json' : assets[0].file,
+  };
 }
 
 async function uploadMain(rest, flags) {
@@ -924,7 +998,11 @@ async function uploadMain(rest, flags) {
   }
 }
 
-main().catch(e => {
-  if (e instanceof BoonanError) die(e.message, e.code, e.detail ? { detail: e.detail } : undefined);
-  die(String(e && e.message || e), 'unexpected');
-});
+if (require.main === module) {
+  main().catch(e => {
+    if (e instanceof BoonanError) die(e.message, e.code, e.detail ? { detail: e.detail } : undefined);
+    die(String(e && e.message || e), 'unexpected');
+  });
+}
+
+module.exports = { registerMap, MAP_REGISTER_SCHEMA };

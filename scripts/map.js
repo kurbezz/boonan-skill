@@ -16,6 +16,7 @@
 const { BoonanError } = require('./client');
 
 const LAYER_TYPES = ['tiles', 'objects', 'entities'];
+const COLLIDER_TYPES = ['rect', 'circle', 'polygon'];
 
 function escapeRegex(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
@@ -129,12 +130,77 @@ function validateMap(map, where) {
     if (o.sprite && typeof o.sprite === 'object' && o.sprite.tilesetId && !tsById[o.sprite.tilesetId]) {
       problems.push(`${tag} (${o.name}): sprite.tilesetId not found: ${o.sprite.tilesetId}`);
     }
+    if (o.layerId !== undefined) {
+      const layer = layers.find(L => L && L.id === o.layerId);
+      if (!layer || (layer.type === undefined ? 'tiles' : layer.type) !== 'objects') {
+        problems.push(`${tag} (${o.name}): layerId must refer to an objects layer`);
+      }
+    }
+    if (o.defId !== undefined && o.defId !== null && typeof o.defId !== 'string') {
+      problems.push(`${tag} (${o.name}): defId must be a string or null`);
+    }
+    if (o.collider !== undefined && o.collider !== null) {
+      if (!isPlainObject(o.collider) || !COLLIDER_TYPES.includes(o.collider.type)) {
+        problems.push(`${tag} (${o.name}): collider.type must be rect, circle, or polygon`);
+      } else if (o.collider.dynamic !== undefined && typeof o.collider.dynamic !== 'boolean') {
+        problems.push(`${tag} (${o.name}): collider.dynamic must be a boolean`);
+      }
+    }
   });
   for (const [name, count] of names) {
     if (count > 1) problems.push(`${where}: object name ${JSON.stringify(name)} is used ${count} times — the engine looks objects up by name`);
   }
 
   return problems;
+}
+
+/** Validate an editor-saved objects/<name>.json collider preset. */
+function validatePreset(preset, where) {
+  const problems = [];
+  if (!isPlainObject(preset)) return [`${where}: preset root is not an object`];
+  if (preset.version !== 1) problems.push(`${where}: version must be 1`);
+  if (typeof preset.name !== 'string' || !preset.name) problems.push(`${where}: name must be a non-empty string`);
+  if (!isPlainObject(preset.size)) problems.push(`${where}: size must be an object`);
+  else {
+    for (const key of ['w', 'h']) if (typeof preset.size[key] !== 'number' || !(preset.size[key] > 0)) {
+      problems.push(`${where}: size.${key} must be a positive number`);
+    }
+  }
+  if (preset.sprite !== null && !isPlainObject(preset.sprite)) problems.push(`${where}: sprite must be an object or null`);
+  if (!Array.isArray(preset.colliders)) problems.push(`${where}: colliders must be an array`);
+  else preset.colliders.forEach((collider, i) => {
+    const tag = `${where}: colliders[${i}]`;
+    if (!isPlainObject(collider) || !COLLIDER_TYPES.includes(collider.type)) {
+      problems.push(`${tag}: type must be rect, circle, or polygon`);
+      return;
+    }
+    const positive = key => typeof collider[key] === 'number' && collider[key] > 0;
+    const numeric = key => typeof collider[key] === 'number';
+    if (collider.type === 'rect') {
+      for (const key of ['x', 'y']) if (!numeric(key)) problems.push(`${tag}: ${key} must be a number`);
+      for (const key of ['w', 'h']) if (!positive(key)) problems.push(`${tag}: ${key} must be a positive number`);
+    } else if (collider.type === 'circle') {
+      for (const key of ['x', 'y']) if (!numeric(key)) problems.push(`${tag}: ${key} must be a number`);
+      if (!positive('r')) problems.push(`${tag}: r must be a positive number`);
+    } else {
+      if (!Array.isArray(collider.points) || collider.points.length < 3) problems.push(`${tag}: polygon points must contain at least 3 [x,y] pairs`);
+      else collider.points.forEach((point, pi) => {
+        if (!Array.isArray(point) || point.length !== 2 || !point.every(v => typeof v === 'number')) {
+          problems.push(`${tag}: points[${pi}] must be [x,y] numbers`);
+        }
+      });
+    }
+  });
+  return problems;
+}
+
+/** Create the exact default sprite shape observed in an editor-saved preset. */
+function makePreset(name, { w = 32, h = 32 } = {}) {
+  return {
+    version: 1, name, size: { w, h },
+    sprite: { tilesetId: null, tileId: null, cols: 1, rows: 1, relativePath: null, sx: 0, sy: 0, sw: 0, sh: 0 },
+    colliders: [],
+  };
 }
 
 /** Empty valid map. */
@@ -384,9 +450,9 @@ function renderAscii(map, layerIdOrName) {
 }
 
 module.exports = {
-  validateMap, makeMap, findLayer, findTileset, normalizeTile,
+  validateMap, validatePreset, makeMap, makePreset, findLayer, findTileset, normalizeTile,
   addTileset, setTile, eraseTile, fillRect, setSize,
   addLayer, rmLayer, upsertObject, rmObject,
   pngSize, renderAscii, deepMerge, gridOf, slug,
-  LAYER_TYPES,
+  LAYER_TYPES, COLLIDER_TYPES,
 };

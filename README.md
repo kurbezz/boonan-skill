@@ -43,6 +43,7 @@ node scripts/cli.js add-node systems move.json For_Each_Entity__action --fields 
 node scripts/cli.js link systems move.json n_a exec n_b exec
 node scripts/cli.js upload img/Tilesets ./grass.png --register
 node scripts/cli.js map new level_1 --register
+node scripts/cli.js map preset new collider_1 --w 32 --h 32
 node scripts/cli.js ui add-layer hud.json --json '{"name":"score"}'
 node scripts/cli.js build "My Game"
 ```

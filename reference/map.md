@@ -34,15 +34,20 @@ and write it.
 Objects become entities automatically, with position, sprite, collider, and
 components. They do not need `Core_Query_add__action`.
 
-**Not confirmed live:** the exact shape of `collider` and of the `objects/`
-preset files. The CLI keeps unknown object fields as they are. To copy the
-shape the editor uses, read an existing object with `map objects`.
+The `collider` and preset examples below were captured from files saved by
+the map editor on a sandbox project. The CLI preserves unknown object fields.
+That confirms the saved JSON shape, not collision behavior at runtime.
 
 ## Wiring to the game
 
 1. Upload the tileset image: `upload img/Tilesets ./grass.png --register`.
 2. Create the map and register it with `map new level_1 --register`. This adds
-   `Register_Level_maps__action` to `assets/`.
+   `Register_Level_maps__action` to an existing `assets/*.json` graph. The CLI
+   prefers `assets/levels.json` when it exists; otherwise it uses an existing
+   asset graph (such as `images.json`). It never creates `levels.json`, because
+   the editor can protect standard asset files. If no asset registry exists,
+   create one explicitly in the editor before registering; `map new --register`
+   preflights this condition and will not create the map.
 3. In `game.json`, add `Map_Load_Map__action`(name="level_1").
 4. In the draw system, put `Map_Draw_Map_Below__action` before the entity loop
    and `Map_Draw_Map_Above__action` after it.
@@ -64,7 +69,38 @@ node cli.js map resize level_1 60 40
 node cli.js map get level_1 --out ./level_1.json
 node cli.js map validate ./level_1.json --local
 node cli.js map put level_1 ./level_1.json
+node cli.js map preset new collider_1 --w 32 --h 32
+node cli.js map preset get collider_1 --out ./collider_1.json
+node cli.js map preset validate ./collider_1.json --local
+node cli.js map preset put collider_1 ./collider_1.json
 ```
+
+## Object presets (`objects/*.json`)
+
+The following form was saved by the map editor (the CLI preserves unknown
+fields). `map preset new` makes this same default sprite shape with an empty
+`colliders` array; it does not add an object to a map.
+
+```json
+{
+  "version": 1,
+  "name": "collider_1",
+  "size": {"w": 32, "h": 32},
+  "sprite": {"tilesetId": null, "tileId": null, "cols": 1, "rows": 1, "relativePath": null, "sx": 0, "sy": 0, "sw": 0, "sh": 0},
+  "colliders": [
+    {"id": "col_rect", "type": "rect", "x": 0, "y": 0, "w": 32, "h": 32},
+    {"id": "col_circle", "type": "circle", "x": 16, "y": 16, "r": 16},
+    {"id": "col_polygon", "type": "polygon", "points": [[0,32],[16,0],[32,32]]}
+  ]
+}
+```
+
+`map preset put` only replaces an existing preset through an optimistic,
+validated edit. Create a missing preset first with `map preset new`. A map
+object can reference it with `defId`; editor-saved objects can also include an
+object-layer `layerId` and a nullable or typed `collider`, for example
+`{"type":"circle","dynamic":false}`. These are saved editor forms; this
+reference does not claim any visual or build behavior.
 
 `add-tileset` reads the image size from the local PNG header. Without
 `--local`, pass `--w` and `--h`.

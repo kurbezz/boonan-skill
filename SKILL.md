@@ -65,6 +65,7 @@ node cli.js rm systems enemy_ai.json
 # assets, maps, UI
 node cli.js upload img/Tilesets ./grass.png --register  # default binary (latin1) encoding + assets/images.json node
 node cli.js map new level_1 --register                  # also: tile, fill, object, show, get/put
+node cli.js map preset new collider_1 --w 32 --h 32    # also: get, validate, put (objects/*.json)
 node cli.js ui add-layer hud.json --json '{"name":"score"}'  # also: layers, set, rm-layer, put
 # ship
 node cli.js build "Title"
@@ -74,8 +75,8 @@ node cli.js url
 Use `.` as the folder for root files (`node cli.js nodes . game.json`).
 Output is always JSON; failures return `{"ok":false,...}` with exit code 1.
 `node cli.js help` lists every subcommand and the batch format.
-`upload --dry-run`, `map validate --local`, and `ui validate --local` work
-without a cookie.
+`upload --dry-run`, `map validate --local`, `map preset validate --local`,
+and `ui validate --local` work without a cookie.
 `upload` defaults to `--encoding binary` (a latin1 byte string), which was
 verified in a live sandbox. `--encoding buffer` remains a diagnostic option,
 but the live-tested server timed out and did not upload an 87-byte PNG when it
@@ -127,7 +128,7 @@ Limits: 5 projects, 15 MB per project, 5 MB per file.
 - [reference/graph-format.md](reference/graph-format.md) - node/link JSON shape, ports, scope per folder, component file format.
 - [reference/recipes.md](reference/recipes.md) - ECS mental model and step-by-step chains: draw, move, camera, map, collisions, sound, UI, timers.
 - [reference/assets.md](reference/assets.md) - binary upload, encoding, registration rules.
-- [reference/map.md](reference/map.md) - map JSON (tilesets, tile cells, objects) and `map` commands.
+- [reference/map.md](reference/map.md) - map JSON (tilesets, tile cells, objects), editor-saved collider presets, and `map` commands.
 - [reference/ui-scene.md](reference/ui-scene.md) - UI scene JSON (19 layer fields) and `ui` commands.
 - [reference/protocol.md](reference/protocol.md) - socket.io events, headers, versioning, browser-side globals.
 - [reference/verifying.md](reference/verifying.md) - canvas layout and pixel checks for screenshot verification.
