@@ -1,0 +1,8 @@
+{
+  "name": "boonan-cli",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Headless boonan.io client: edit node graphs without a browser",
+  "bin": { "boonan": "./cli.js" },
+  "dependencies": { "socket.io-client": "^4.8.3" }
+}
