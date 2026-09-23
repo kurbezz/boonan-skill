@@ -103,7 +103,7 @@
 
 - A component is a graph file `components/<name>.json`; the file name becomes the component's class name (e.g. `health.json` → class `health`).
 - The graph contains one `Component__event` node; fields live in its `fieldValues.properties` array (`{name, type, default}`, type `number` | `string` | `bool` | `array`). See graph-format.md.
-- Once saved, the editor generates an `Add <name>` action schema for attaching the component, and map-editor objects can carry its fields.
+- Once saved, a `Component_<name>__action` schema exists (inputs: `entity` + one per property) for attaching the component; map-editor objects can carry its fields too.
 - `Worlds_Get_Component__getter` (Get Component) exposes every declared property of the chosen component as a separate output port — no per-field getter node needed.
 - `Worlds_Set_Component_Fields__action` / `Worlds_Add_Component_Fields__action` build one port per property too: only ports you actually connect are written/added; unconnected fields are left untouched.
 

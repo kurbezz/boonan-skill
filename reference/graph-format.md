@@ -92,8 +92,17 @@ single `Component__event` node whose `fieldValues.properties` is an array:
 
 Property `type` is one of `number`, `string`, `bool`, `array`; anything else
 falls back to `number`. Property names must be valid identifiers.
-After saving, `Get Component` / `Set Component Fields` with
-`component: "<name>"` expose these properties as ports.
+
+Saving the file generates one schema per component (not listed in nodes.md):
+
+| schemaId | kind | scopes | inputs |
+|---|---|---|---|
+| `Component_<name>__action` | action | g/s/m | `entity`, then one input per property (literal in `fieldValues.<prop>`) |
+
+Use it to attach the component to an entity, exactly like the built-in
+`Worlds_Add_Position__action`. `Worlds_Get_Component__getter` /
+`Worlds_Set_Component_Fields__action` with `component: "<name>"` then expose
+the properties as ports.
 
 ## Registering a system
 
