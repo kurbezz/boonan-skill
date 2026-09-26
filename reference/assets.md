@@ -51,6 +51,10 @@ there:
 Nesting is kept: `img/Tilesets/grass.png` becomes name `Tilesets/grass`,
 which is the name you pass to `Assets_Image_Asset__getter`.
 
+The Sep26 asset API explicitly removes `Register JSON`: stale JSON
+registration nodes and files in `configs/` are not copied into the build as
+engine overrides. Do not rely on them to make JSON available at runtime.
+
 ## Limits
 
 5 MB per file, about 10 MB per folder (enforced by the editor), and 15 MB

@@ -55,7 +55,7 @@ See [SKILL.md](SKILL.md) for the workflow and
 
 ```
 SKILL.md                    agent instructions (loaded by the runtime)
-reference/nodes.md          all 199 node schemas: params, ports, behaviour
+reference/nodes.md          217 built-in schemas (Sep26): params, ports, behaviour
 reference/graph-format.md   node/link JSON shape, scopes, component files
 reference/recipes.md        ECS model + step-by-step node chains
 reference/assets.md         binary upload + asset registration

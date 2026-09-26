@@ -82,8 +82,12 @@ verified in a live sandbox. `--encoding buffer` remains a diagnostic option,
 but the live-tested server timed out and did not upload an 87-byte PNG when it
 was sent as a socket.io Buffer. See [assets.md](reference/assets.md).
 
-The client sends `baseVersion` on every write (retries on conflict),
-validates the graph before sending, skips no-op writes, and paces writes.
+`edit` and `editJson` read the current file and retry recognized version
+conflicts. `writeFile` sends `baseVersion` only when one was supplied or a
+truthy cached version exists. Create, delete, rename, and upload are not
+optimistically protected. Writes are paced; a no-op edit can still write.
+`validateGraph` checks graph structure only, not schema existence or port
+semantics.
 RPCs on one `Boonan` connection are serialized because replies have no
 request IDs; after a timeout reconnect before making another request.
 For scripted edits, `require('./scripts/client')` exposes `Boonan`
@@ -94,7 +98,7 @@ For scripted edits, `require('./scripts/client')` exposes `Boonan`
 
 | path | contents |
 |---|---|
-| `game.json` | entry graph: `On_Start__event`, `On_Tick__event`, `Add_System__action` list |
+| `game.json` | entry graph: `On_Start__event`, `On_Tick__event`, system/module/input registration |
 | `systems/*.json` | one graph per concern, root `On_System_Update__event` |
 | `components/*.json` | custom components (`Component__event` with `fieldValues.properties`) |
 | `assets/*.json` | `Register_*__action` nodes; a game node only sees assets registered here |
@@ -111,7 +115,9 @@ Limits: 5 projects, 15 MB per project, 5 MB per file.
 |---|---|
 | Extra root keys in a graph | Root must be exactly `{nodes, links}` |
 | Invented `schemaId` | Copy from nodes.md; format `Label_Words__action\|__getter\|__event` |
-| New system file does nothing | Add `Add_System__action`(file) to `game.json`; node order = execution order |
+| New system file does nothing | Add `Add_System__action`(file="name.json") in `game.json`. It is init metadata: it may stand alone, or chain only to another `Add System`; do not connect it from `On_Start`/`On_Tick`. A homogeneous Add System chain specifies system order. |
+| Module cannot be used | Add `Add_Module__action` with a basename such as `camera.json`, not `modules/camera.json`. It follows the same init-chain rule as Add System. |
+| Input action is never recognized | Add `Inputs_Register_Action__action`; it may stand alone or chain only to another Register Action, never directly from `On_Start`/`On_Tick`. |
 | Entity invisible to systems | `Core_Query_add__action` (Register Entity) after Create Entity |
 | Getter on an empty query crashes the frame | Use `Query_First_Entity__action` → `found` branch, or `Is_Valid__getter` |
 | `Get_Variable__getter` inside `systems/` | Game scope only; store state in component fields |
@@ -124,7 +130,7 @@ Limits: 5 projects, 15 MB per project, 5 MB per file.
 
 ## Reference
 
-- [reference/nodes.md](reference/nodes.md) - all 199 node schemas: id, kind, scopes, params, ports, behaviour notes. Grep by label or category.
+- [reference/nodes.md](reference/nodes.md) - 217 built-in node schemas from the Sep26 editor: id, kind, scopes, params, ports, behaviour notes. Project-generated component nodes are not included. Grep by label or category.
 - [reference/graph-format.md](reference/graph-format.md) - node/link JSON shape, ports, scope per folder, component file format.
 - [reference/recipes.md](reference/recipes.md) - ECS mental model and step-by-step chains: draw, move, camera, map, collisions, sound, UI, timers.
 - [reference/assets.md](reference/assets.md) - binary upload, encoding, registration rules.

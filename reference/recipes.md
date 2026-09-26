@@ -1,6 +1,12 @@
 # Building a game: recipes
 
-`game.json` is the root graph: `On_Start__event` runs once (setup: register assets, create entities, init camera/map/UI), `On_Tick__event` runs every frame. Systems are separate graphs in `systems/`, each registered from `game.json` with `Add_System__action`; their top-to-bottom order in `game.json` is their execution order each frame (movement → camera → drawing is typical).
+`game.json` is the root graph: `On_Start__event` runs once (setup: register assets, create entities, init camera/map/UI), `On_Tick__event` runs every frame. Systems are separate graphs in `systems/`, each registered from `game.json` with `Add_System__action`. Registration is init metadata, not ordinary event flow. A single Add System may be disconnected; to make movement, camera, then drawing explicit, use this homogeneous chain:
+
+```text
+Add_System(move.json).exec → Add_System(camera.json).exec → Add_System(draw.json).exec
+```
+
+Do not connect `On_Start__event` or `On_Tick__event` to an Add System input. That input accepts another Add System only; an Add System output may continue ordinary flow. This is specifically an Add System rule, not a general rule for mixing init-node kinds.
 
 ## Mental model
 
@@ -8,7 +14,7 @@
 - Engine components (built-in, always available): `position{x,y}`, `sprite{texture,offset,width,height}`, `colliderRect{width,height,dynamic}`, `colliderCircle{radius,dynamic}`, `bbox{width,height,row,col}`, `path{list}`, `player` (marker, no fields).
 - Queries select entities by component name(s) joined with `.`, e.g. `player`, `sprite`, `colliderRect.sprite`. `For_Each_Entity__action` and `Query_First_Entity__action` take a `query` string.
 - White/round ports are `exec` (flow, order of execution). Colored ports are data. Only exec-port nodes are steps; getters and math nodes (hatched header: `Add__getter`, `Multiply__getter`, `Worlds_Get_Component__getter`, `Assets_Image_Asset__getter`) have no exec ports — they're inlined values evaluated fresh each time something reads them.
-- Standalone nodes that don't need an exec link and don't go in a chain: `Add_System__action`, `Inputs_Register_Action__action`, `Core_Camera_init__action`, `Map_Load_Map__action`, `UIScene_Load_UI_Scene__action`.
+- `Add_System__action` and `Inputs_Register_Action__action` are init metadata. Each can stand alone; when ordered, chain only nodes of that same registration kind. Do not connect either directly from `On_Start__event` or `On_Tick__event`.
 - The screen is cleared every frame. Anything visible must be drawn every frame, in `On_Tick__event` or in a drawing system.
 - Multiply movement speed by `delta` (from `On_Tick__event`/`On_System_Update__event` output) so speed is frame-rate independent.
 - Systems have no memory of their own. Persist state on entity components (`Worlds_Set_Component_Fields__action`, `Worlds_Add_Component_Fields__action`), not in system-local variables.
@@ -41,31 +47,33 @@
 2. Inside the loop `body` branch: `Renderer_Draw_Image__action`, `layer` ← `Core_Renderer_getLayer__getter`(name="world").
 3. `Worlds_Get_Component__getter`(entity, component="sprite"): its `texture` output → `texture`, `width`/`height` outputs → `dstW`/`dstH`.
 4. `Worlds_Get_Component__getter`(entity, component="position"): `x` → `dstX`, `y` → `dstY`. To apply the sprite's `offset`, split it with `Vector2_X__getter`/`Vector2_Y__getter` and sum into position via `Add__getter`.
-5. In `game.json`: `Add_System__action`(file="draw.json").
+5. Register the three systems explicitly in `game.json`:
+   `Add_System(move.json).exec → Add_System(camera.json).exec → Add_System(draw.json).exec`.
+   Do not attach the chain input to `On_Start__event` or `On_Tick__event`.
 
 *`Map_Draw_Map_Below__action` / `Map_Draw_Map_Above__action` draw the map under/over entities; if no map is loaded they do nothing.*
 
 ### Move by keys
 
-1. In `game.json`: `Inputs_Register_Action__action`(action="right", key=D) and another one (action="left", key=A) — standalone nodes, no exec link needed.
+1. In `game.json`: add `Inputs_Register_Action__action`(action="right", key=D) and another one (action="left", key=A). They may stand alone, or form a Register Action-only chain; do not connect their inputs directly from `On_Start__event`/`On_Tick__event`.
 2. New file `systems/move.json`: `On_System_Update__event`.exec → `For_Each_Entity__action`(query="player").exec.
 3. In the loop `body`: `Branch__action`, `condition` ← `Inputs_Action_Pressed__getter`(action="right").
 4. On the `true` branch: `Worlds_Add_Component_Fields__action`(entity, component="position"), `x` ← `Multiply__getter`(200, `On_System_Update__event`.delta).
 5. Repeat for `left` with speed −200, and for up/down using field `y`.
-6. In `game.json`: `Add_System__action`(file="move.json") — place above `draw.json` in the list.
+6. Register it with the move → camera → draw Add System chain shown above after all three system files exist.
 
 *Multiply speed by `delta` so it's the same on fast and slow machines.*
 
 ### Camera follows player
 
-1. In `game.json`: `Core_Camera_init__action`(width, height = game window size) — standalone node.
+1. In `game.json`: configure `Core_Camera_init__action`(width, height = game window size).
 2. New file `systems/camera.json`: `On_System_Update__event`.exec → `Query_First_Entity__action`(query="player").exec.
 3. On the `found` branch: `Camera_Follow__action`, `x`/`y` ← `Worlds_Get_Component__getter`(entity, component="position"). `delta` param 0.1 = smooth follow, 0 = instant snap.
-4. In `game.json`: `Add_System__action`(file="camera.json") — after the movement system, before the drawing system.
+4. Register it with the move → camera → draw Add System chain shown above.
 
 ### Map in the game
 
-1. In `game.json`: `Map_Load_Map__action`(name="level_1") — standalone node.
+1. In `game.json`: configure `Map_Load_Map__action`(name="level_1").
 2. Map objects become entities automatically with position/sprite/collider/custom components; `Core_Query_add__action` (Register Entity) is not needed for them.
 3. In the drawing system keep `Map_Draw_Map_Below__action` before the entity loop and `Map_Draw_Map_Above__action` after it.
 4. To find a specific object by its map-editor name, use `Core_Map_getEntity__getter` (Get Map Object) — only valid inside `Map_On_Map_Loaded__event`, since the map loads asynchronously.
@@ -87,7 +95,7 @@
 
 ### UI screen
 
-1. In `game.json`: `UIScene_Load_UI_Scene__action`(file="ui/main_menu.json") — standalone node.
+1. In `game.json`: configure `UIScene_Load_UI_Scene__action`(file="ui/main_menu.json").
 2. `UIScene_On_UI_Scene_Loaded__event`.exec → `Core_UIScene_setText__action` (Set UI Layer Text)(layer, text) to fill in a text layer.
 3. Handle button clicks in the UI graph: `UIScene_On_UI_Click__event`(layer name).exec → your action chain.
 4. Toggle a whole group: `Core_UIScene_setNodeVisible__action` (Set UI Layer Visible)(group name, visible).
@@ -102,7 +110,7 @@
 ## Custom components
 
 - A component is a graph file `components/<name>.json`; the file name becomes the component's class name (e.g. `health.json` → class `health`).
-- The graph contains one `Component__event` node; fields live in its `fieldValues.properties` array (`{name, type, default}`, type `number` | `string` | `bool` | `array`). See graph-format.md.
+- The graph contains one `Component__event` node; fields live in its `fieldValues.properties` array (`{name, type, default}`, type `number` | `string` | `bool` | `array` | `object` | `entity` | `enum`). See graph-format.md.
 - Once saved, a `Component_<name>__action` schema exists (inputs: `entity` + one per property) for attaching the component; map-editor objects can carry its fields too.
 - `Worlds_Get_Component__getter` (Get Component) exposes every declared property of the chosen component as a separate output port — no per-field getter node needed.
 - `Worlds_Set_Component_Fields__action` / `Worlds_Add_Component_Fields__action` build one port per property too: only ports you actually connect are written/added; unconnected fields are left untouched.

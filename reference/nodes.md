@@ -35,7 +35,7 @@
 |---|---|---|---|---|---|
 | `On_Start__event` | event | g |  | — | Init graph root; everything wired to `exec` runs once at load (register assets, create entities, VFX/UI templates). |
 | `On_Tick__event` | event | g |  | delta (number), frame (number), timestamp (number) | Main loop root, runs every frame; engine auto-updates Worlds/UI/VFX/Inputs modules, no manual call needed. |
-| `Add_System__action` | action | g | file:string="player.json", world:string="world" | — | Attaches a system from `systems/`; node order = execution order; compiler auto-adds the import. |
+| `Add_System__action` | action | g | file:string="player.json", world:string="world" | exec | Registers a system from `systems/`; its own registration chain sets system order. The input accepts only registration nodes, should not be put in `On Tick`, and its output can continue normal setup; compiler auto-adds the import. (init: true metadata) |
 | `Core_setSpeed__action` | action | g/s/m | speed:number=1 | — | Time multiplier: 0.5 slows, 2 speeds up. |
 | `Core_stop__action` | action | g/s/m |  | — | Stops the main loop. |
 
@@ -52,7 +52,7 @@
 | `Module__event` | event | m |  | none | Module declaration; class name from filename (`inventory.json` → `class inventory`), properties become state fields, read/written via `Get`/`Set <name> Field` nodes inside and outside the module. |
 | `Method__event` | event | m |  | — | One module method; name, params, return set on the node, body is an exec chain; "action" kind gives exec ports, "value" kind is an expression node (return required). (dynamic: method-params) |
 | `Return__action` | action | m | value:any=null | none | Returns a value from a module method and stops execution. |
-| `Add_Module__action` | action | g | file:string="" | — | Attaches a module from `modules/`; without it `Core.<name>` doesn't exist and module nodes don't work; node order = registration order; compiler auto-adds the import. |
+| `Add_Module__action` | action | g | file:string="" | exec | Registers a module from `modules/`; without it `Core.<name>` and its nodes do not work. Its own registration chain sets registration order; its output can continue setup, which is emitted in `On Start` after asset registration. Compiler auto-adds the import. (init: true metadata) |
 
 ## System
 
@@ -64,7 +64,7 @@
 
 | schemaId | kind | scopes | params | flow → outs | note |
 |---|---|---|---|---|---|
-| `Core_Signals_on__event` | event | g | eventName:string="my-event" | data (object) | Subscribes to a bus event. |
+| `Core_Signals_on__event` | event | g | eventName:string="my-event" | data (any) | Subscribes to a bus event; `data` has the type supplied to `Emit Signal`. |
 | `Core_Signals_emit__action` | action | g/s/m | eventName:string="my-event", data:any=null | — | — |
 
 ## Math
@@ -96,6 +96,7 @@
 | `Assets_Texture_Width__getter` | getter | g/s/m | texture:texture | width (number) | Loaded texture width in px (0 until loaded). |
 | `Assets_Texture_Height__getter` | getter | g/s/m | texture:texture | height (number) | — |
 | `Assets_JSON_Asset__getter` | getter | g/s/m | name:string="level" | object (object) | — |
+| `Core_Assets_setSingle__action` | action | g/s/m | type:string="img", name:string="priest", url:string="/public/img/priest.png" | — | Registers one lazy-loaded asset. Hidden from the editor and MCP; use specialized asset-graph registration nodes for project assets. |
 
 ### Asset registration (`assets/*.json` only)
 
@@ -103,11 +104,11 @@ Scope `a` = `assets/`. These are the only way to register an asset; `name` is th
 
 | schemaId | kind | scopes | params | flow → outs | note |
 |---|---|---|---|---|---|
-| `Register_Image_img__action` | action | a | name:string, ext:string="png" | — | Registers `img/<name>.<ext>`; consumed by `Assets_Image_Asset__getter`. |
-| `Register_Sound_audio__action` | action | a | name:string, ext:string="wav" | — | Registers `audio/<name>.<ext>`; consumed by `Core_Audio_play__action`. |
-| `Register_Level_maps__action` | action | a | name:string, ext:string="json" | — | Registers `maps/<name>.<ext>`; consumed by `Map_Load_Map__action`. |
-| `Register_UI_Scene_ui__action` | action | a | name:string, ext:string="json" | — | Registers `ui/<name>.<ext>`; rendering is done by `UIScene_Load_UI_Scene__action`. |
-| `Register_Model__action` | action | a | name:string, ext:string="glb" | — | Registers `models/<name>.<ext>`. |
+| `Register_Image_img__action` | action | a | name:string="priest", ext:string="png" | — | Registers `img/<name>.<ext>`; consumed by `Assets_Image_Asset__getter`. |
+| `Register_Sound_audio__action` | action | a | name:string="dig", ext:string="wav" | — | Registers `audio/<name>.<ext>`; consumed by `Core_Audio_play__action`. |
+| `Register_Level_maps__action` | action | a | name:string="level_1", ext:string="json" | — | Registers `maps/<name>.<ext>`; consumed by `Map_Load_Map__action`. |
+| `Register_UI_Scene_ui__action` | action | a | name:string="main", ext:string="json" | — | Registers `ui/<name>.<ext>`; rendering is done by `UIScene_Load_UI_Scene__action`. |
+| `Register_Model__action` | action | a | name:string="bear", ext:string="glb" | — | Registers `models/<name>.<ext>`. |
 
 ## Renderer
 
@@ -119,6 +120,10 @@ Scope `a` = `assets/`. These are the only way to register an asset; `name` is th
 | `Core_Renderer_clear__action` | action | g/s/m |  | — | — |
 | `Renderer_Clear_Layer__action` | action | g/s/m | layer:layer | — | Clears one specific layer. |
 | `Renderer_Draw_Image__action` | action | g/s/m | layer:layer, texture:texture, srcX:number=0, srcY:number=0, srcW:number=0, srcH:number=0, dstX:number=0, dstY:number=0, dstW:number=128, dstH:number=128, angle:number=0, alpha:number=1 | — | Draws a texture on a webgl2D layer (usually `world`); srcX/Y/W/H is the region IN the texture (0 in srcW/H = whole texture, larger than image gets clipped); for a map-object entity, `sprite.texture` is already a cut tile — leave srcW/H at 0 and take dstW/H from `sprite.width/height`. |
+| `Renderer_Viewport_Width__getter` | getter | g/s/m |  | number | Live game viewport width in pixels; read it where needed rather than caching it at startup. |
+| `Renderer_Viewport_Height__getter` | getter | g/s/m |  | number | Live game viewport height in pixels. |
+| `Renderer_Viewport_Aspect_Ratio__getter` | getter | g/s/m |  | number | Viewport width divided by height. |
+| `Renderer_On_Viewport_Resize__event` | event | g/s/m |  | width (number), height (number), aspectRatio (number) | Fires after render layers are recalculated when the window changes size or a device rotates; it does not fire at startup. |
 
 ## Camera
 
@@ -136,7 +141,7 @@ Scope `a` = `assets/`. These are the only way to register an asset; `name` is th
 
 | schemaId | kind | scopes | params | flow → outs | note |
 |---|---|---|---|---|---|
-| `Inputs_Register_Action__action` | action | g | key:string="Space", action:string="jump" | — | Binds a key to an action; populates the dropdown in `Action Pressed` so all keys are visible in the graph (not hidden in `configs/inputs.js`); assign multiple keys to one action with several nodes (e.g. WASD + arrows); pick the key via the node's button. |
+| `Inputs_Register_Action__action` | action | g | key:string="Space", action:string="jump" | exec | Registers a key binding and populates the `Action Pressed` list; chain registrations only, rather than wiring one from `On Start` or `On Tick`, then optionally continue setup from its output. Assign multiple keys with several nodes; choose the key with the node button. (init: true metadata, not a `fieldValues` field) |
 | `Inputs_Action_Pressed__getter` | getter | g/s/m | action:string="jump" | bool | Is the action pressed; list built from `Register Action` nodes in the main file; mouse buttons (`mouseLeft`, `mouseRight`, `mouseMiddle`, `click`) are built in. |
 | `Inputs_Cursor_X__getter` | getter | g/s/m |  | number | — |
 | `Inputs_Cursor_Y__getter` | getter | g/s/m |  | number | — |
@@ -150,7 +155,7 @@ Scope `a` = `assets/`. These are the only way to register an asset; `name` is th
 | schemaId | kind | scopes | params | flow → outs | note |
 |---|---|---|---|---|---|
 | `Core_Worlds_active_addEntity__action` | action | g/s/m |  | entity (entity) | Creates an empty entity in the active world; wire `Add …` nodes straight off its `entity` output (no exec chain needed), components attach right after creation. |
-| `Core_Worlds_active_delEntity__action` | action | g/s/m | entity:entity | — | — |
+| `Core_Worlds_active_delEntity__action` | action | g/s/m | entity:entity | — | Removes the entity from the active world and all queries. Safe inside `For Each Entity` over the same query because that loop iterates a snapshot. |
 | `Worlds_Add_Position__action` | action | g/s/m | entity:entity, x:number=0, y:number=0 | — | Position component. |
 | `Worlds_Add_Sprite__action` | action | g/s/m | entity:entity, texture:texture, offsetX:number=-32, offsetY:number=-32, width:number=64, height:number=64 | — | Sprite component; `width`/`height` is on-screen draw size, `offsetX`/`offsetY` shifts from the entity position (use minus half the size to center). |
 | `Worlds_Add_Collider_Circle__action` | action | g/s/m | entity:entity, radius:number=40, dynamic:bool=true | — | — |
@@ -158,9 +163,11 @@ Scope `a` = `assets/`. These are the only way to register an asset; `name` is th
 | `Worlds_Mark_As_Player__action` | action | g/s/m | entity:entity | — | Player marker; entity will match the `player` query. |
 | `Worlds_Add_Path__action` | action | g/s/m | entity:entity, list:array=[] | — | — |
 | `Worlds_Get_Component__getter` | getter | g/s/m | entity:entity, component:string="position" | component (object) | Reads a whole component; node gets one output per field (no separate node needed per value); field list comes from the component declaration (`### component` blocks for engine, `components/*.json` for project). (dynamic: component-fields) |
+| `Worlds_Get_Component_Field__getter` | getter | g/s/m | entity:entity, component:string="position", field:string="x" | value (any) | Reads one chosen component field. Hidden from the editor and MCP; component/field metadata is dynamic. |
 | `Worlds_Has_Component__getter` | getter | g/s/m | entity:entity, component:string="position" | result (bool) | Whether the entity has the component. (dynamic: component-field) |
 | `Worlds_Set_Component_Fields__action` | action | g/s/m | entity:entity, component:string="position" | — | Writes several component fields in one node; ports built from the chosen component (`position` → x,y; `body` → vx,vy, etc.); connected ports are written, unconnected ones are skipped (component isn't reset). Handy at the start of a system instead of many single `Set Component Field` nodes. (dynamic: component-fields-input) |
 | `Worlds_Add_Component_Fields__action` | action | g/s/m | entity:entity, component:string="position" | — | Adds to several component fields in one node (connected ports add, unconnected untouched): e.g. `position.x += vx` and `position.y += vy` in one node; for a timer: `Add To Component Fields(entity, "timer", value: delta)`. (dynamic: component-fields-input) |
+| `Worlds_Add_Component_Field__action` | action | g/s/m | entity:entity, component:string="position", field:string="x", amount:number=0 | — | Adds to one component field, e.g. a timer field by `delta`. Hidden from the editor and MCP; component/field metadata is dynamic. |
 | `Worlds_Remove_Component__action` | action | g/s/m | entity:entity, name:string="sprite" | — | — |
 
 ## Query
@@ -200,7 +207,7 @@ Scope `a` = `assets/`. These are the only way to register an asset; `name` is th
 | `UIScene_On_UI_Scene_Loaded__event` | event | g |  | — | Scene read and layers parsed; set score text and wire button handlers here. |
 | `Core_UIScene_unload__action` | action | g/s/m |  | — | Removes the scene: layers forgotten, button handlers detached, render layer cleared. |
 | `Core_UIScene_setVisible__action` | action | g/s/m | visible:bool=true | — | Shows/hides the whole scene; hidden scene doesn't render or catch cursor but stays loaded. |
-| `Core_UIScene_setScaleMode__action` | action | g/s/m | mode:string="fit" | — | How the scene's design resolution fits the window. |
+| `Core_UIScene_setScaleMode__action` | action | g/s/m | mode:string="expand" | — | How the scene design fits the window: `expand` preserves proportions without side bars (default); `fit`, `fill`, `stretch`, and `none` are also available. |
 | `UIScene_Set_UI_Scene_Layer__action` | action | g/s/m | target:layer | — | Moves the scene to another render layer; default is `ui`. |
 | `UIScene_Draw_UI_Scene__action` | action | g/s/m | target:layer | — | Draws the scene right now on a given layer, for custom draw order; disable auto-draw first (`Set UI Auto Draw`) or the scene draws twice. |
 | `Core_UIScene_setAutoDraw__action` | action | g/s/m | enabled:bool=true | — | Whether the scene draws automatically every frame; disable for `Draw UI Scene`. |
@@ -295,10 +302,12 @@ Scope `a` = `assets/`. These are the only way to register an asset; `name` is th
 | schemaId | kind | scopes | params | flow → outs | note |
 |---|---|---|---|---|---|
 | `Branch__action` | action | g/s/m | condition:bool=true | true, false | Conditional branch. |
-| `Sequence__action` | action | g/s/m |  | then0, then1, then2, then3 | Runs branches top to bottom in order. |
+| `Sequence__action` | action | g/s/m | outputs:number=4 | then0…thenN (2–8) | Runs branches top to bottom. `outputs` dynamically selects 2–8 branches; reducing it removes the excess branch connections. |
 | `Reroute__getter` | getter | g/s/m | value:any=null | out (any) | A waypoint on a wire: computes nothing and doesn't appear in code — the value is inlined at the use site as if it weren't there; purely visual, to break up a long wire; add with Alt+click on a wire, type/color inherited from the source. |
 | `For_Loop__action` | action | g/s/m | count:number=10 | body, exec → index (number) | Counter loop from 0 to `count - 1`. |
-| `For_Each_Entity__action` | action | g/s/m | query:string="player" | body, exec → entity (entity), index (number) | Iterates all entities in a query. |
+| `For_Each_Entity__action` | action | g/s/m | query:string="player" | body, exec → entity (entity), index (number) | Iterates a snapshot of the query. Destroying or unregistering in `body` does not disrupt iteration; entities added during it appear next frame. `Break` may end the loop. |
+| `For_Each_Item__action` | action | g/s/m | array:array=[] | body, exec → item (any), index (number) | Iterates array elements; `body` is skipped for an empty array. `Break` may end the loop. |
+| `Break__action` | action | g/s/m |  | none | Immediately exits a containing `For Loop` or `For Each` body. It is invalid outside a loop and has no `exec` output. |
 | `Do_Once__action` | action | g |  | body, exec | Runs the `body` branch once for the whole game session; stores a flag in a module variable, so only available in the main file (a system file is a single function, nothing can live outside it). |
 | `On_Interval__action` | action | g | seconds:number=1, delta:number=0 | body, exec | Runs `body` no more often than once per `seconds` seconds. Put inside `On Tick` — take `delta` from `On Tick`'s output. Accumulates time in a module variable, so only available in the main file; in a system, keep the timer in a component field (`Add To Component Fields`/`Set Component Fields`). |
 
@@ -322,6 +331,20 @@ Scope `a` = `assets/`. These are the only way to register an asset; `name` is th
 | `Make_Vector2__getter` | getter | g/s/m | x:number=0, y:number=0 | vector (vector2) | — |
 | `Vector2_X__getter` | getter | g/s/m | vector:vector2 | x (number) | — |
 | `Vector2_Y__getter` | getter | g/s/m | vector:vector2 | y (number) | — |
+| `Vector2_Multiply__getter` | getter | g/s/m | vector:vector2, by:number=1 | result (vector2) | Multiplies both vector coordinates by a scalar. |
+| `Vector2_Divide__getter` | getter | g/s/m | vector:vector2, by:number=1 | result (vector2) | Divides both vector coordinates by a scalar; division by zero returns `{ x: 0, y: 0 }`. |
+
+## Arrays
+
+| schemaId | kind | scopes | params | flow → outs | note |
+|---|---|---|---|---|---|
+| `Make_Array__getter` | getter | g/s/m | items:array=[] | array (array) | Creates an array; enter initial values as an array literal. |
+| `Array_Length__getter` | getter | g/s/m | array:array=[] | length (number) | Number of elements. |
+| `Array_Item__getter` | getter | g/s/m | array:array=[], index:number=0 | item (any) | Zero-based item lookup; out-of-range results are empty, so validate entity results. |
+| `Array_Has__getter` | getter | g/s/m | array:array=[], value:any=0 | result (bool) | Whether the array includes the value. |
+| `Array_Push__action` | action | g/s/m | array:array=[], value:any=0 | — | Appends a value. The `array` input must be linked to the stored array being changed. |
+| `Array_Set__action` | action | g/s/m | array:array=[], index:number=0, value:any=0 | — | Replaces an item by index. The `array` input must be linked to the stored array being changed. |
+| `Array_Remove_At__action` | action | g/s/m | array:array=[], index:number=0 | — | Removes an item by index and shifts later items left. The `array` input must be linked to the stored array being changed. |
 
 ## Operators
 

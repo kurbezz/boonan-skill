@@ -90,8 +90,8 @@ single `Component__event` node whose `fieldValues.properties` is an array:
 }
 ```
 
-Property `type` is one of `number`, `string`, `bool`, `array`; anything else
-falls back to `number`. Property names must be valid identifiers.
+Property `type` is one of `number`, `string`, `bool`, `array`, `object`,
+`entity`, or `enum`. Property names must be valid identifiers.
 
 Saving the file generates one schema per component (not listed in nodes.md):
 
@@ -107,6 +107,15 @@ the properties as ports.
 ## Registering a system
 
 A system file does nothing until `game.json` contains an
-`Add_System__action` node with `fieldValues.file = "<name>.json"` linked
-into the `On_Start__event` chain. The order of `Add System` nodes in that
-chain is the per-frame execution order.
+`Add_System__action` node with `fieldValues.file = "<name>.json"`.
+`Add System` is init metadata, so a single node may be disconnected. To set
+an explicit system order, link a homogeneous registration chain, for example:
+
+```text
+Add_System(move.json).exec → Add_System(camera.json).exec → Add_System(draw.json).exec
+```
+
+Do not link `On_Start__event` or `On_Tick__event` to an `Add System` input:
+that input accepts only another `Add System`. Its output can continue an
+ordinary flow after registration. This rule describes Add System only; do not
+assume other init-node kinds can be mixed into that chain.
